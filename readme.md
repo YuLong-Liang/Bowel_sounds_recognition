@@ -54,85 +54,9 @@
 - run.sh 为主要的工作脚本，脚本内按照 stage 划分为程序化的若干步骤。
 - tools 为软链接，指向 wenet/tools/ ，可通过访问该目录下的tools，间接访问 wenet/tools。
 
-**run.sh 脚本内容如下：**
-
-```shell
-#!/bin/bash
-
-# 准备程序环境，将 wenet 环境准备好，
-. ./path.sh || exit 1;
-
-stage=0
-stop_stage=5
-
-# 指明 data/pos data/neg data/bla 为我们存放信息的目录
-dir=data
-pos_dir=$dir/pos
-neg_dir=$dir/neg
-bla_dir=$dir/bla
-
-# 配置传参的功能，可以通过 --args_name args_value 的方法，将参数传递给下一个脚本
-. tools/parse_options.sh || exit 1;
-
-# stae -1 第 "-1" 步，调用 local/data_preparation.sh 功能是准备数据，解释见下文
-if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
-	local/data_preparation.sh
-fi
-
-# stage 0 第 “0” 步，对三个目录，循环调用 tools/compute_fbank_feats.py 传入三个参数
-# 第一个参数 wav.scp 是输入，音频的标识与路径表
-# 第二个参数 wav.ark 是输出，存储 fbank 二进制格式文件的路径
-# 第三个参数 ark.scp 是输出，存储每个音频文件对应的 fbank 索引
-# 结果是三个目录下均生成 wav.ark 和 ark.scp
-if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
-	for dir in $pos_dir $neg_dir $bla_dir; do
-		python tools/compute_fbank_feats.py  $dir/wav.scp $dir/wav.ark $dir/ark.scp
-	done
-fi
-
-# stage 1 第 “1” 步，调用 local/read_fbank.py 传入三个目录作为参数，解释见下文
-if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-	python local/read_fbank.py $pos_dir $neg_dir $bla_dir
-fi
-
-```
+**run.sh ：**
 
 **local/data_preparation.sh：** 
-
-```shell
-#!/bin/bash
-
-wav_path=/mnt/g/wenet_location/asr-data/bs_data/wav_data
-
-dir=../data
-positive_dir=$dir/pos
-negative_dir=$dir/neg
-blank_dir=$dir/bla
-tmp_dir=$dir/tmp
-
-# 创建目录
-mkdir -p $dir
-mkdir -p $tmp_dir
-mkdir -p $positive_dir
-mkdir -p $negative_dir
-mkdir -p $blank_dir
-
-find $wav_path -iname "*.wav" > $tmp_dir/wav.flist
-# cat $tmp_dir/wav.flist
-
-grep -i "positive" $tmp_dir/wav.flist > $dir/pos/wav.flist
-grep -i "negative" $tmp_dir/wav.flist > $dir/neg/wav.flist
-grep -i "blank" $tmp_dir/wav.flist > $dir/bla/wav.flist
-
-for dir in $positive_dir $negative_dir $blank_dir; do
-	sed -e 's/\.wav//' $dir/wav.flist | awk -F '/' '{print $NF}' > $dir/utt.list
-	paste -d' ' $dir/utt.list $dir/wav.flist > $dir/wav.scp_all
-	sort -u $dir/wav.scp_all > $dir/wav.scp
-done
-
-echo "$0: data preparation succeeded"
-
-```
 
 新建 data/pos，data/neg，data/bla 三个目录，并为三个目录分别生成 `wav.scp` 文件，该文件存储了一张表，表结构为 `<key>` `<path>` ，key 为音频文件的标识，path 为音频文件的路径。
 
@@ -140,71 +64,7 @@ echo "$0: data preparation succeeded"
 
 ![image-20220402100651014](G:\Typora_images\image-20220402100651014.png)
 
-解释脚本 read_fbank.py，脚本内容如下：
-
-**read_fbank.py**
-
-```python
-import argparse
-import torchaudio
-import torchaudio.compliance.kaldi as kaldi
-
-import wenet.dataset.kaldi_io as kaldi_io
-import numpy as np
-import json
-import os
-
-def parse_opts():
-	parser = argparse.ArgumentParser(description='read_fbank')
-	parser.add_argument('pos_dir', default=None,help='msg')
-	parser.add_argument('neg_dir', default=None, help='msg')
-	parser.add_argument('bla_dir', default=None, help='msg')
-	args = parser.parse_args()
-	return args
-
-def init_data_list():
-	"""
-	return data: [(mat, label),...,()]
-
-	mat 是一个 2D 数组，元素类型 float32，shape = (T ,80)， T 为时间帧长度，变化值。
-	label 从 {0, 1} 取值
-	"""
-	# args = parse_opts()
-	path = "G:\wenet_location\wav2vec\data"
-	# print(os.path.exists(path))
-	pos_dir = os.path.join(path ,"pos")
-	neg_dir = os.path.join(path ,"neg")
-	bla_dir = os.path.join(path ,"bla")
-
-	dict_all = {}
-    # 分别对三个目录下的wav.ark读文件，并将全部数据存入字典 dict_all，
-	for dir in (pos_dir, neg_dir, bla_dir):
-		file = os.path.join(dir, "wav.ark")
-		# print("file is exists? {}".format(os.path.isfile(file)))
-		# outFilt = dir + '/wav_fbank.json'
-        # d 为单个目录下的存储 fbank 特征矩阵的字典，key 为音频标识，例如"bs_0001"，mat 为"T*80" 维度的特征矩阵
-		d = { key:mat for key,mat in kaldi_io.read_mat_ark(file) }
-		# update 将 d 字典添加进入 dict_all 字典
-        dict_all.update(d)
-	# print(dict_all['bs_0001'].shape, dict_all['na_01'].shape, dict_all['other_1'].shape)
-	# print(len(dict_all))
-	
-    # 遍历 dict_all 字典，为 key以 “bs” 开头的样本标记为1，否则标记为0，返回数据格式为二元组的列表，例如data 为 [(特征矩阵_1， label_1),...,(特征矩阵_N，label_N)]
-	data = []
-	for k, v in dict_all.items():
-		label = 0
-		if k.startswith('bs'):
-			label = 1
-		data.append((v, label))
-		# print(data)
-	return data
-
-if __name__ == '__main__':
-	print(len(init_data_list()))
-
-
-
-```
+**read_fbank.py**：
 
 init_data_list 为所需的主要方法，无需参数，会根据 stage 0 步生成的 wav.ark 文件，返回所有数据的特征矩阵及其对应的标签。
 
@@ -214,14 +74,7 @@ init_data_list 为所需的主要方法，无需参数，会根据 stage 0 步�
 
 创建 jupyter python3 文件，local/model.ipynb，文件内容如下。**该小节，请配合 local/model.ipynb 或 model.pdf 阅读。**
 
-```
-import sys
-sys.path.append('G:/wenet_location/wenet/')
-import paddle
-from read_fbank import init_data_list
-from paddle.io import Dataset, DataLoader
-import numpy as np
-```
+
 
 导入环境包，sys.path.append 将 wenet 目录加入系统环境变量，方便后面调用 wenet 下的 python 代码，原因是 read_fbank 中调用了 wenet 代码。
 
@@ -229,37 +82,11 @@ import numpy as np
 
 导入 paddle 提供的 Dataset 数据集和 DataLoader 数据读取迭代器。
 
-```
- data_list = init_data_list()
-```
-
 拿到 二元组列表，命名为 data_list 。
-
-```python
-print(":{}".format(len(data_list)))
-for index, data in enumerate(data_list):
-    if index > 5 :
-    	break
-    print("idx={}, shape={}, label={}".format(index, data[0].shape, data[1]))
-```
 
 浏览 data_list 中内容，查看前五个数据样本的矩阵维度，标签。可以看到 shape=(T, 80)，T大小是变动的，因此，我们需要将 T 都进行0值填充到 T的最大值。
 
-```python
-print(min(data[0].shape[0] for data in data_list))
-print(max(data[0].shape[0] for data in data_list))
-```
-
 查看 T 的取值范围为 [10, 223]
-
-```python
-NUM_SAMPLES=len(data_list)
-BATCH_SIZE = 64
-BATCH_NUM = NUM_SAMPLES // BATCH_SIZE
-train_offset = int(NUM_SAMPLES * 0.6)
-val_offset = int(NUM_SAMPLES * 0.8)
-print(train_offset, val_offset)
-```
 
 定义一些数据集的配置属性值，
 
@@ -270,73 +97,9 @@ print(train_offset, val_offset)
 - val_offset 是数据集中占 0.6-0.8 比例的数据样本被视为验证数据
 - 没有定义test_offset，但是数据集中占 0.8-1.0 比例的数据样本被视为测试数据
 
-```python
-class MyDataset(Dataset):
-    """
-    paddle.io.Dataset
-    """
-    def __init__(self, mode='train'):
-        """
-
-        """
-        super(MyDataset, self).__init__()
-        # 每次数据都会洗牌，保证训练，验证，测试数据集的 样本分布均衡
-        np.random.shuffle(data_list)
-        if mode == 'train':
-            self.data_list = data_list[0: train_offset]
-            pass
-        elif mode == 'val':
-            self.data_list = data_list[train_offset: val_offset]
-            pass
-        elif mode == 'test':
-            self.data_list = data_list[val_offset:]
-            pass
-        else:
-            print("mode should be in ['train', 'test', 'val']")
-        self.num_samples = len(self.data_list)
-
-    def __getitem__(self, index):
-        """
-        __getitem__index
-        """
-        # 样本 T 补全代码，
-        data = self.data_list[index][0]
-        # 计算 T 与 223 的差值
-        padlen = 223 - data.shape[0]
-        # 调用 np.pad 在 T 轴上，在后面补上 padlen 长度的 0 值
-        data = np.pad(data, ((0,padlen),(0,0)))
-        label = np.array(self.data_list[index][i], dtype=np.int64)
-        return data, label
-	
-    def __len__(self):
-        """
-        __len__
-        """
-        return self.num_samples
-  
-train_dataset = MyDataset(mode='train')
-test_dataset = MyDataset(mode='test')
-val_dataset = MyDataset(mode='val')
-print('=============train_dataset len is {} ============='.format(len(train_dataset)))
-for data, label in train_dataset:
-print(data.shape, label)
-break
-print('=============test_dataset len is {} ============='.format(len(test_dataset)))
-for data, label in test_dataset:
-print(data.shape, label)
-break
-print('=============val_dataset len is {} ============='.format(len(val_dataset)))
-for data, label in val_dataset:
-print(data.shap
-```
-
 上面代码定义的三个数据集，train_dataset，test_dataset，val_dataset，并且补全了每个数据样本的维度，每条样本形状shape 为 (223, 80)，223为帧最大值，80为fbank特征数量。可以看到，train_dataset有1124样本，test_dataset 有 409，val_dataset 有408。
 
-```python
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-```
+
 
 数据集封装为数据读取迭代器，每次读取 64 个批大小的样本，shuffle = True 意味着读取数据时也会洗牌，drop_last = True 意味着？？？ 【待填坑】
 
@@ -397,222 +160,33 @@ paddle.summary(MyNet(),(1,10,80))
 
 展示输入数据形状为（1，10，80）时，经过模型处理过程中，形状的变化过程。
 
+![image-20220402183616186](G:\Typora_images\image-20220402183616186-16488980874201.png)
+
 ### 3.2 评估指标
 
-精准率计算公式为：
-$$
-acc = \frac{tp}{tp + fp}\tag1
-$$
+**精准率**计算公式为：
+
+<img src="https://latex.codecogs.com/svg.image?acc&space;=&space;\frac{tp}{tp&space;&plus;&space;fp}" title="https://latex.codecogs.com/svg.image?acc = \frac{tp}{tp + fp}" />
+
 其中，tp 为预测为1的样本中，预测正确的样本个数，fp为预测为1的样本中，预测失败的样本个数。精准率衡量了预测为1的正确的概率。
 
-```python
-class PrecisionSoft(paddle.metric.Metric):
-    """
-    1. paddle.metric.Metric
-    """
-    def __init__(self, name='PrecisionSoft'):
-        """
-        2.
-        """
-        super(PrecisionSoft, self).__init__()
-        self.tp = 0
-        self.fp = 0
-        self._name = name
-    def name(self):
-        """
-        3. name
-        """
-        return self._name
-    def update(self, preds, labels):
-        """
-        5. updatebatch
-        - `compute``update`
-        - `compute`compute`update`
-        """
-        sample_num = labels.shape[0]
-        preds = paddle.to_tensor(preds, dtype=paddle.float32)
-        # print("preds={}".format(preds))
-        preds = paddle.argsort(preds, descending=True)
-        preds = paddle.slice(
-        	preds, axes=[len(preds.shape) - 1], starts=[0], ends=[1])
-        for i in range(sample_num):
-            pred = preds[i, 0].numpy()[0]
-            label = labels[i]
-            if pred == 1:
-                if pred == label:
-                    self.tp += 1
-                else:
-                    self.fp += 1
+**召回率**计算公式为：
 
-    def accumulate(self):
-        """
-        6. accumulatebatch
-        `update``accumulate`
-        `fit`
-        """
-        # update
-        ap = self.tp + self.fp
-        return float(self.tp) / ap if ap != 0 else .0
-    
-    def reset(self):
-        self.tp = 0
-        self.fp = 0
+<img src="https://latex.codecogs.com/svg.image?recall&space;=&space;\frac{tp}{tp&plus;fn}" title="https://latex.codecogs.com/svg.image?recall = \frac{tp}{tp+fn}" />
 
-```
-
-召回率评估指标公式为：
-$$
-recall = \frac{tp}{tp+fn}\tag2
-$$
 其中，tp 为标签值为1的样本中预测为1的样本数量，fn为标签值为1的样本中预测为0的样本数量，recall 衡量了具有肠鸣音的样本集合上，模型预测正确的概率。
 
-```
-class RecallSoft(paddle.metric.Metric):
-    """
-    1. paddle.metric.Metric
-    """
-    def __init__(self, name='RecallSoft'):
-        """
-        2.
-        """
-        super(RecallSoft, self).__init__()
-        self.tp = 0
-        self.fn = 0
-        self._name = name
-    def name(self):
-        """
-        3. name
-        """
-        return self._name
-    def update(self, preds, labels):
-        """
-        5. updatebatch
-        - `compute``update`
-        - `compute`compute`update`
-        """
-        sample_num = labels.shape[0]
-        preds = paddle.to_tensor(preds, dtype=paddle.float32)
-        # print("preds={}".format(preds))
-        preds = paddle.argsort(preds, descending=True)
-        preds = paddle.slice(
-        	preds, axes=[len(preds.shape) - 1], starts=[0], ends=[1])
-        for i in range(sample_num):
-            pred = preds[i, 0].numpy()[0]
-            label = labels[i]
-            if label == 1:
-                if pred == label:
-                    self.tp += 1
-                else:
-                    self.fn += 1
+**F1评估**指标计算公式为：
 
-    def accumulate(self):
-        """
-        6. accumulatebatch
-        `update``accumulate`
-        `fit`
-        """
-        # update
-        recall = self.tp + self.fn
-        return float(self.tp) / recall if recall != 0 else .0
-    
-    def reset(self):
-        self.tp = 0
-        self.fn = 0
-```
+<img src="https://latex.codecogs.com/svg.image?F1=\frac{2*acc*recall}{acc&plus;recall}" title="https://latex.codecogs.com/svg.image?F1=\frac{2*acc*recall}{acc+recall}" />
 
-F1评估指标公式为：
-$$
-F1=\frac{2*acc*recall}{acc+recall}\tag3
-$$
 其中，acc为公式1定义的精准率，recall为公式2定义的召回率，F1指数权衡了精准率和召回率，可以作为最终的评估模型性能的指标。
-
-```
-class F1Soft(paddle.metric.Metric):
-    """
-    1. paddle.metric.Metric
-    """
-    def __init__(self, name='F1Soft'):
-        """
-        2.
-        """
-        super(F1Soft, self).__init__()
-        self.tp1 = 0
-        self.fn = 0
-        self.tp2 = 0
-        self.fp = 0
-        self._name = name
-    def name(self):
-        """
-        3. name
-        """
-        return self._name
-    def update(self, preds, labels):
-        """
-        5. updatebatch
-        - `compute``update`
-        - `compute`compute`update`
-        """
-        sample_num = labels.shape[0]
-        preds = paddle.to_tensor(preds, dtype=paddle.float32)
-        # print("preds={}".format(preds))
-        preds = paddle.argsort(preds, descending=True)
-        preds = paddle.slice(
-        	preds, axes=[len(preds.shape) - 1], starts=[0], ends=[1])
-        for i in range(sample_num):
-            pred = preds[i, 0].numpy()[0]
-            label = labels[i]
-            if label == 1:
-                if pred == label:
-                    self.tp1 += 1
-                else:
-                    self.fn += 1
-            if pred == 1:
-            	if pred == label:
-            		self.tp2 += 1
-            	else:
-            		self.fp += 1
-
-    def accumulate(self):
-        """
-        6. accumulatebatch
-        `update``accumulate`
-        `fit`
-        """
-        # update
-        ap = self.tp2 + self.fp
-        recall = self.tp1 + self.fn
-        
-        ap = float(self.tp2) / ap if ap != 0 else .0
-        recall = float(self.tp1) / recall if recall != 0 else .0
-        return 2 * (ap * recall) / (ap + recall) if (ap + recall) != 0 else .0
-    
-    def reset(self):
-        self.tp1 = 0
-        self.fn = 0
-        self.tp2 = 0
-        self.fp
-```
-
-
 
 ## 4 训练与测试
 
 本小节介绍模型训练过程，并展示测试结果
 
 ### 4.1 训练
-
-```python
-from paddle import Model
-from paddle.optimizer import Adam
-from paddle.metric import Accuracy, Precision, Recall
-
-model = Model(MyNet())
-
-model.prepare(Adam(learning_rate=0.001, parameters= model.parameters()),
-              CrossEntropyLoss(), 
-              [Accuracy(), PrecisionSoft(), RecallSoft(), F1Soft()])
-model.fit(train_loader, val_loader, epochs=10, verbose=2)
-```
 
 导入 paddle 的模型高层API Model，可以将我们定义的网络 MyNet() 封装为更方便使用的模型 model。
 
@@ -631,34 +205,15 @@ model.fit(train_loader, val_loader, epochs=10, verbose=2)
 
 ### 4.2 测试
 
-在测试集上，模型预测数据样本的结果展示
 
-代码如下：
 
-```
-# model.predict返回的result，对于一个测试样本，其对应的每个类别的概率，
-result = model.predict(test_loader)
-# 查看预测结果的形状
-print(len(result), len(result[0]), result[0][0].shape)
-# 对 result 中，表示每个类别概率的轴上，降序排序，
-result = paddle.argsort(paddle.to_tensor(result), descending=True)
-# 取出降序排序中，第一个概率最大的下标，0表示预测为不具有，1表示预测为有
-result = paddle.slice(result, axes=[len(result.shape) - 1], starts=[0],ends=[1])
-# 查看预测结果的形状
-print(result.shape)
-```
+| MyNet | Precision | Recall | F1     |
+| ----- | --------- | ------ | ------ |
+| train | 0.9321    | 0.9982 | 0.9640 |
+| val   | 0.9424    | 0.9972 | 0.9690 |
+| test  | 0.9212    | 0.9971 | 0.9576 |
 
-```
-result = result[0,:,:,0]
-# 查看预测结果
-result
-```
 
-```
-t_r = paddle.where(result == 0, paddle.ones(result.shape), paddle.zeros(result.shape))
-# 查看有几个被预测为0， 避免模型全部预测为1。
-print(paddle.sum(t_r)
 
-```
+> 因伦理，协议等问题限制，语音数据集不会公开
 
-可以看到，有12个测试样本被预测为0。
