@@ -28,15 +28,15 @@
 
 **bs_0003.wav**
 
-![image-20220402093826512](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402093826512.png)
+![image-20220402093826512](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402093826512.png)
 
 **other_3.wav**
 
-![image-20220402093655786](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402093655786.png)
+![image-20220402093655786](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402093655786.png)
 
 **na_03.wav**
 
-![image-20220402093901312](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402093901312.png)
+![image-20220402093901312](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402093901312.png)
 
 ### 2.2 提取fbank特征
 
@@ -44,7 +44,7 @@
 
 新建 wav2vec 文件夹作为主要的工作目录，wav2vec 目录下的结构如下：
 
-![image-20220402094331521](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402094331521.png)
+![image-20220402094331521](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402094331521.png)
 
 上图是在 wav2vec 目录下，使用 linux tree 命令打印的目录结构，从图中可以看出wav2vec目录下有两个文件夹和三个文件：
 
@@ -62,7 +62,7 @@
 
 **data/pos/wav.scp：**
 
-![image-20220402100651014](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402100651014.png)
+![image-20220402100651014](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402100651014.png)
 
 **read_fbank.py**：
 
@@ -160,7 +160,7 @@ paddle.summary(MyNet(),(1,10,80))
 
 展示输入数据形状为（1，10，80）时，经过模型处理过程中，形状的变化过程。
 
-![image-20220402183616186](https://github.com/MomentOfTime/Bowel_sounds_recognition/tree/main/images/image-20220402183616186-16488980874201.png)
+![image-20220402183616186](https://github.com/MomentOfTime/Bowel_sounds_recognition/blob/main/images/image-20220402183616186-16488980874201.png)
 
 ### 3.2 评估指标
 
